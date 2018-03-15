@@ -175,23 +175,28 @@ class Transformer(TextEncoder):
         '''
         with tf.variable_scope(scope, reuse=reuse):
             # Set the fall back option for num_units
+            ### num_units is Attention size, result as C.
             if num_units is None:
                 num_units = queries.get_shape().as_list[-1]
 
             # Linear projections
+            ### densely_connected layer output is activation(inputs.kernel + bias)
             Q = tf.layers.dense(queries, num_units, activation=tf.nn.relu) # (N, T_q, C)
             K = tf.layers.dense(keys, num_units, activation=tf.nn.relu) # (N, T_k, C)
             V = tf.layers.dense(keys, num_units, activation=tf.nn.relu) # (N, T_k, C)
 
             # Split and concat
+            ### divide Q, K, V into num_heads
             Q_ = tf.concat(tf.split(Q, num_heads, axis=2), axis=0) # (h*N, T_q, C/h)
             K_ = tf.concat(tf.split(K, num_heads, axis=2), axis=0) # (h*N, T_k, C/h)
             V_ = tf.concat(tf.split(V, num_heads, axis=2), axis=0) # (h*N, T_k, C/h)
 
             # Multiplication
+            ### q_ih * (k_jh)^T
             outputs = tf.matmul(Q_, tf.transpose(K_, [0, 2, 1])) # (h*N, T_q, T_k)
 
             # Scale
+            ### {q_ih * (k_jh)^} / (d^0.5)
             outputs = outputs / (K_.get_shape().as_list()[-1] ** 0.5)
 
             # Key Masking
@@ -203,7 +208,9 @@ class Transformer(TextEncoder):
             outputs = tf.where(tf.equal(key_masks, 0), paddings, outputs) # (h*N, T_q, T_k)
 
             # Activation
+            ### a_ijh = softmax[{q_ih * (k_jh)^} / (d^0.5)]
             attention_weights = tf.nn.softmax(outputs) # (h*N, T_q, T_k)
+            
             # store the attention weights for analysis
             batch_size = tf.shape(queries)[0]
             seq_len = tf.shape(queries)[1]
