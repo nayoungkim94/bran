@@ -201,10 +201,15 @@ class Transformer(TextEncoder):
 
             # Key Masking
             key_masks = tf.sign(tf.abs(tf.reduce_sum(keys, axis=-1))) # (N, T_k)
+            ### replicate key_masks num_heads=h=8 times --> key_masks have (8*N, T_k)
             key_masks = tf.tile(key_masks, [num_heads, 1]) # (h*N, T_k)
+            ### expand_dims --> (h*N, 1, T_k), tile --> (h*N, tf.shape(queries)[1], T_k)
             key_masks = tf.tile(tf.expand_dims(key_masks, 1), [1, tf.shape(queries)[1], 1]) # (h*N, T_q, T_k)
-
-            paddings = tf.ones_like(outputs)*(-1e8)
+            
+            ### makes tensor full of -1e8
+            paddings = tf.ones_like(outputs)*(-1e8) # (h*N, T_q, T_k)
+            ### find elements which key_masks=0 && paddings or outputs!=0 
+            ### and return the elements as tensor
             outputs = tf.where(tf.equal(key_masks, 0), paddings, outputs) # (h*N, T_q, T_k)
 
             # Activation
@@ -228,15 +233,18 @@ class Transformer(TextEncoder):
             outputs = tf.nn.dropout(outputs, dropout_rate)
 
             # Weighted sum
+            ### o_ih = sigma_j(v_jh ⊙ a_ijh)
             outputs = tf.matmul(outputs, V_) # ( h*N, T_q, C/h)
 
             # Restore shape
+            ### o_i = [o_1; ...; o_h]
             outputs = tf.concat(tf.split(outputs, num_heads, axis=0), axis=-1 ) # (N, T_q, C)
 
             # Residual connection
             outputs += tf.nn.dropout(queries, dropout_rate)
 
             # Normalize
+            ### m_i = LN(b_i^(k-1) + o_i)
             outputs = self.normalize(outputs) # (N, T_q, C)
 
         return outputs
